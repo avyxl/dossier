@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>dossier</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <style>
+        :root {
+            --bg: #000000;
+            --fg: #ffffff;
+            --dim: #444444;
+            --border: #222222;
+            --border-hover: #555555;
+            --accent: #10b981;
+            --danger: #ef4444;
+            --font: 'JetBrains Mono', monospace;
+            --trans: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+
+        body {
+            background-color: var(--bg);
+            color: var(--fg);
+            font-family: var(--font);
+            font-size: 13px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overflow-x: hidden;
+        }
+
+        ::-webkit-scrollbar { width: 3px; height: 3px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--dim); }
+        ::-webkit-scrollbar-thumb:hover { background: var(--fg); }
+
+        /* --- BACKGROUND TELEMETRY WIDGETS --- */
+        .widget-bar {
+            width: 100%;
+            max-width: 900px;
+            padding: 20px 20px 0 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 10px;
+            color: var(--dim);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            z-index: 10;
+        }
+        .widget-item { display: flex; align-items: center; gap: 8px; }
+        .status-dot { width: 5px; height: 5px; background: var(--accent); border-radius: 50%; box-shadow: 0 0 8px var(--accent); }
+
+        /* --- PRE-INIT / INTRO SEQUENCE --- */
+        #init-overlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: var(--bg); display: flex; justify-content: center; align-items: center;
+            z-index: 10000; cursor: pointer; transition: opacity 0.8s ease;
+        }
+        .blink-text { animation: blink 2s infinite; font-size: 11px; color: var(--dim); letter-spacing: 3px; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+
+        #intro-overlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: var(--bg); display: none; justify-content: center; align-items: center;
+            z-index: 9999; transition: opacity 1.2s ease;
+        }
+        #intro-box {
+            max-width: 700px;
+            padding: 40px;
+            text-align: center;
+        }
+        #intro-text {
+            font-size: 32px;
+            font-weight: 500;
+            line-height: 1.6;
+            letter-spacing: 4px;
+            text-shadow: 0 0 25px rgba(255, 255, 255, 0.4);
+            transition: opacity 0.8s ease;
+            white-space: pre-wrap;
+        }
+        .cursor { display: inline-block; width: 10px; height: 32px; background: var(--fg); margin-left: 8px; vertical-align: middle; animation: blink 1s infinite; }
+
+        /* --- MAIN CONTAINER --- */
+        .container {
+            width: 100%; max-width: 650px; padding: 30px 20px 60px 20px;
+            display: flex; flex-direction: column; gap: 28px;
+            opacity: 0; transform: translateY(15px);
+            transition: opacity 1.2s cubic-bezier(0.16, 1, 0.3, 1), transform 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+            pointer-events: none;
+        }
+        .container.visible { opacity: 1; transform: translateY(0); pointer-events: all; }
+
+        header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 20px; }
+        .logo { font-size: 18px; font-weight: 600; letter-spacing: 3px; text-transform: uppercase; }
+        
+        .controls { display: flex; gap: 15px; }
+        .toggle-btn { background: none; border: none; color: var(--dim); font-family: var(--font); cursor: pointer; font-size: 10px; transition: var(--trans); text-transform: uppercase; letter-spacing: 1px; }
+        .toggle-btn.active, .toggle-btn:hover { color: var(--fg); }
+
+        /* --- TABS --- */
+        .tabs { display: flex; gap: 30px; border-bottom: 1px solid var(--border); }
+        .tab { padding: 12px 0; color: var(--dim); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: var(--trans); font-size: 11px; text-transform: uppercase; letter-spacing: 2px; }
+        .tab:hover { color: var(--fg); }
+        .tab.active { color: var(--fg); border-bottom: 2px solid var(--fg); }
+
+        /* --- VIEWS --- */
+        .view { display: none; flex-direction: column; gap: 22px; opacity: 0; transform: translateY(8px); transition: var(--trans); }
+        .view.active { display: flex; opacity: 1; transform: translateY(0); }
+
+        .form-group { display: flex; flex-direction: column; gap: 8px; }
+        label { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 1.5px; display: flex; justify-content: space-between; }
+        
+        input[type="text"], input[type="password"], textarea { width: 100%; background: #030303; border: 1px solid var(--border); color: var(--fg); padding: 16px; font-family: var(--font); font-size: 13px; outline: none; transition: var(--trans); border-radius: 0; }
+        textarea { min-height: 130px; resize: vertical; line-height: 1.6; }
+        input:focus, textarea:focus { border-color: var(--border-hover); background: #000; box-shadow: 0 0 15px rgba(255,255,255,0.03); }
+
+        .pass-row { display: flex; gap: 10px; align-items: center; }
+        #strength-meter { font-size: 10px; text-transform: uppercase; color: var(--dim); letter-spacing: 1px; }
+
+        /* --- FILE UPLOAD --- */
+        .file-upload { display: flex; align-items: center; justify-content: space-between; border: 1px dashed var(--border); padding: 16px; background: rgba(255,255,255,0.01); cursor: pointer; transition: var(--trans); }
+        .file-upload:hover { border-color: var(--border-hover); background: rgba(255,255,255,0.03); }
+        .file-upload input[type="file"] { display: none; }
+        .file-name { font-size: 11px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+
+        /* --- BUTTONS --- */
+        button.action-btn { background: transparent; color: var(--fg); border: 1px solid var(--fg); padding: 16px; font-family: var(--font); font-size: 11px; font-weight: 600; cursor: pointer; transition: var(--trans); text-transform: uppercase; letter-spacing: 2px; width: 100%; }
+        button.action-btn:hover { background: var(--fg); color: var(--bg); box-shadow: 0 0 25px rgba(255,255,255,0.25); }
+        button.secondary { border-color: var(--border); color: var(--dim); }
+        button.secondary:hover { border-color: var(--fg); color: var(--fg); background: transparent; box-shadow: none; }
+        button.danger { border-color: var(--danger); color: var(--danger); }
+        button.danger:hover { background: var(--danger); color: #000; box-shadow: 0 0 20px rgba(239, 68, 68, 0.4); }
+
+        .checkbox-row { display: flex; align-items: center; gap: 12px; font-size: 10px; color: var(--dim); cursor: pointer; user-select: none; text-transform: uppercase; letter-spacing: 1px; }
+        .checkbox-row input { accent-color: var(--fg); width: 14px; height: 14px; }
+
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+
+        /* --- OUTPUT & TOAST --- */
+        .output-container { border: 1px dashed var(--border-hover); padding: 20px; text-align: center; word-break: break-all; background: rgba(255,255,255,0.02); font-size: 12px; letter-spacing: 1px; line-height: 1.6; }
+        #qr-code { display: flex; justify-content: center; margin: 10px auto; background: var(--fg); padding: 12px; width: fit-content; }
+
+        /* --- BURN TIMER BAR --- */
+        #burn-timer-bar { width: 100%; height: 2px; background: var(--danger); transform-origin: left; transition: transform 1s linear; display: none; }
+
+        #toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(50px); background: var(--fg); color: var(--bg); padding: 12px 24px; font-weight: 600; opacity: 0; transition: var(--trans); pointer-events: none; z-index: 1000; text-transform: uppercase; font-size: 10px; letter-spacing: 2px; }
+        #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    </style>
+</head>
+<body>
+
+    <!-- TELEMETRY WIDGET BAR -->
+    <div class="widget-bar">
+        <div class="widget-item"><span class="status-dot"></span> <span id="wt-clock">00:00:00 UTC</span></div>
+        <div class="widget-item">SYS_ENTROPY: <span id="wt-entropy" style="color:var(--fg);">0x8F2A</span></div>
+        <div class="widget-item">AES-256-CBC</div>
+    </div>
+
+    <!-- Required Audio Initialization Overlay -->
+    <div id="init-overlay" onclick="startApp()">
+        <div class="blink-text">[ CLICK TO INITIALIZE DOSSIER ]</div>
+    </div>
+
+    <!-- Intro Sequence Popup -->
+    <div id="intro-overlay">
+        <div id="intro-box">
+            <span id="intro-text"></span><span class="cursor" id="intro-cursor"></span>
+        </div>
+    </div>
+
+    <div id="toast"></div>
+
+    <div class="container" id="app-container">
+        <header>
+            <div class="logo">dossier.</div>
+            <div class="controls">
+                <button class="toggle-btn active" id="btn-sfx" onclick="toggleSfx()">[ SND: ON ]</button>
+            </div>
+        </header>
+
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('encrypt')" id="tab-encrypt">Seal</div>
+            <div class="tab" onclick="switchTab('decrypt')" id="tab-decrypt">Unseal</div>
+        </div>
+
+        <!-- ENCRYPT VIEW -->
+        <div class="view active" id="view-encrypt">
+            <div class="form-group">
+                <label><span>Payload Text</span> <span id="payload-bytes">0 B</span></label>
+                <textarea id="enc-text" placeholder="enter secret message..." oninput="updatePayloadSize()"></textarea>
+            </div>
+
+            <!-- FILE ATTACHMENT (Max 3MB) -->
+            <label class="file-upload" onclick="document.getElementById('file-input').click()">
+                <span style="font-size: 10px; text-transform: uppercase; color: var(--fg);">+ Attach File (Max 3MB)</span>
+                <span class="file-name" id="file-label">none selected</span>
+                <input type="file" id="file-input" onchange="handleFileSelect(event)">
+            </label>
+
+            <div class="form-group">
+                <label><span>Passkey</span> <span id="strength-meter"></span></label>
+                <div class="pass-row">
+                    <input type="password" id="enc-pass" placeholder="passkey..." oninput="checkStrength()">
+                    <button class="action-btn secondary" style="width:auto; padding:0 20px;" onclick="genPass()">Gen</button>
+                </div>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:10px;">
+                <label class="checkbox-row">
+                    <input type="checkbox" id="enc-burn" checked> Burn record on single unseal (Codes only)
+                </label>
+                <label class="checkbox-row">
+                    <input type="checkbox" id="enc-stego"> Steganography mode (Hide ciphertext in blank text)
+                </label>
+            </div>
+
+            <div class="grid-3" style="margin-top: 10px;">
+                <button class="action-btn" onclick="processEncrypt('url')">URL Link</button>
+                <button class="action-btn secondary" onclick="processEncrypt('code')">Shortcode</button>
+                <button class="action-btn secondary" onclick="processEncrypt('file')">Export .dsr</button>
+            </div>
+        </div>
+
+        <!-- SHARE VIEW -->
+        <div class="view" id="view-share">
+            <div class="form-group">
+                <label id="share-label">Transmission Vector</label>
+                <div class="output-container" id="share-output"></div>
+            </div>
+
+            <div id="qr-code"></div>
+
+            <div class="grid-2" style="margin-top: 10px;">
+                <button class="action-btn" onclick="copyShare()">Copy Vector</button>
+                <button class="action-btn secondary" onclick="nativeShare()">Share...</button>
+            </div>
+            <button class="action-btn secondary" style="margin-top: 8px;" onclick="switchTab('encrypt')">Seal Another</button>
+        </div>
+
+        <!-- DECRYPT VIEW -->
+        <div class="view" id="view-decrypt">
+            <div class="form-group">
+                <label>Vector / Code / File</label>
+                <input type="text" id="dec-code" placeholder="paste url, shortcode, or stego text...">
+            </div>
+
+            <label class="file-upload" onclick="document.getElementById('import-file-input').click()">
+                <span style="font-size: 10px; text-transform: uppercase; color: var(--fg);">+ Import .dsr File</span>
+                <span class="file-name" id="import-file-label">none selected</span>
+                <input type="file" id="import-file-input" accept=".dsr,.enc" onchange="handleImportFile(event)">
+            </label>
+
+            <div class="form-group">
+                <label>Passkey</label>
+                <input type="password" id="dec-pass" placeholder="passkey...">
+            </div>
+
+            <button class="action-btn" style="margin-top: 12px;" onclick="processDecrypt()">Decrypt Payload</button>
+        </div>
+
+        <!-- RESULT VIEW -->
+        <div class="view" id="view-result">
+            <div id="burn-timer-bar"></div>
+            <div class="form-group">
+                <label>Decrypted Payload <span id="burn-status" style="color: var(--dim);"></span></label>
+                <textarea id="result-text" readonly style="border-color: var(--accent);"></textarea>
+            </div>
+            
+            <div id="download-wrapper" style="display:none; margin-top: 5px;">
+                <button class="action-btn secondary" id="btn-download" onclick="downloadAttachment()">[ Download Attached File ]</button>
+            </div>
+
+            <div class="grid-2" style="margin-top: 12px;">
+                <button class="action-btn" onclick="copyResult()">Copy Text</button>
+                <button class="action-btn danger" onclick="clearResult()">Destroy View</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden File Picker for Import -->
+    <input type="file" id="file-import-hidden" style="display:none;" onchange="handleFileImport(event)">
+
+    <script>
+        // --- AUDIO ENGINE ---
+        let sfxOn = true;
+        let audioCtx = null;
+        let noiseBuf = null;
+
+        function initAudio() {
+            if(!audioCtx) {
+                const AC = window.AudioContext || window.webkitAudioContext;
+                if(!AC) return null;
+                audioCtx = new AC();
+                noiseBuf = audioCtx.createBuffer(1, audioCtx.sampleRate, audioCtx.sampleRate);
+                const d = noiseBuf.getChannelData(0);
+                for(let i=0; i<d.length; i++) d[i] = Math.random() * 2 - 1;
+            }
+            if(audioCtx.state === 'suspended') audioCtx.resume();
+            return audioCtx;
+        }
+
+        function playTone(freq, type, dur, vol, slideTo = null) {
+            const ac = initAudio(); if(!ac) return;
+            const t0 = ac.currentTime;
+            const osc = ac.createOscillator();
+            const g = ac.createGain();
+            osc.type = type; osc.frequency.value = freq;
+            if(slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
+            g.gain.setValueAtTime(0.001, t0);
+            g.gain.exponentialRampToValueAtTime(vol, t0 + (dur * 0.1));
+            g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+            osc.connect(g); g.connect(ac.destination);
+            osc.start(t0); osc.stop(t0 + dur + 0.1);
+        }
+
+        function playNoise(freq, dur, vol) {
+            const ac = initAudio(); if(!ac) return;
+            const t0 = ac.currentTime;
+            const src = ac.createBufferSource(); src.buffer = noiseBuf;
+            const f = ac.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = freq;
+            const g = ac.createGain();
+            g.gain.setValueAtTime(0.001, t0);
+            g.gain.linearRampToValueAtTime(vol, t0 + 0.01);
+            g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+            src.connect(f); f.connect(g); g.connect(ac.destination);
+            src.start(t0); src.stop(t0 + dur + 0.1);
+        }
+
+        const SFX = {
+            click: () => playNoise(6000, 0.02, 0.04),
+            type: () => { playNoise(2800 + Math.random()*1500, 0.018, 0.025); playTone(110 + Math.random()*20, 'square', 0.025, 0.01); },
+            blip: () => playTone(1400, 'sine', 0.06, 0.02),
+            startup: () => { playTone(80, 'sawtooth', 1.8, 0.03, 40); playTone(240, 'sine', 1.8, 0.04); },
+            error: () => { playTone(200, 'square', 0.15, 0.03); setTimeout(()=>playTone(150, 'square', 0.2, 0.03), 160); },
+            success: () => { playTone(523.25, 'triangle', 0.1, 0.04); setTimeout(()=>playTone(783.99, 'triangle', 0.2, 0.04), 120); },
+            delete: () => playNoise(800, 0.4, 0.05)
+        };
+
+        function playSound(name) { if(sfxOn && SFX[name]) try { SFX[name](); } catch(e) {} }
+
+        function toggleSfx() {
+            sfxOn = !sfxOn;
+            document.getElementById('btn-sfx').innerText = sfxOn ? '[ SND: ON ]' : '[ SND: OFF ]';
+            document.getElementById('btn-sfx').className = sfxOn ? 'toggle-btn active' : 'toggle-btn';
+            playSound('blip');
+        }
+
+        document.addEventListener('click', e => {
+            if(e.target.tagName === 'BUTTON' && e.target.id !== 'btn-sfx') playSound('click');
+        });
+
+        // --- BACKGROUND TELEMETRY ---
+        setInterval(() => {
+            const now = new Date();
+            document.getElementById('wt-clock').innerText = now.toISOString().substring(11, 19) + ' UTC';
+            document.getElementById('wt-entropy').innerText = '0x' + Math.floor(Math.random()*65535).toString(16).toUpperCase();
+        }, 1000);
+
+        // --- INTRO SEQUENCE WITH CLEAN SPACING ---
+        const languages = [
+            "bonjour ,  bienvenue  sur  dossier .",
+            "hola ,  bienvenido  a  dossier .",
+            "hallo ,  willkommen  bei  dossier .",
+            "ciao ,  benvenuto  in  dossier .",
+            "olá ,  bem - vindo  ao  dossier .",
+            "hello ,  welcome  to  dossier ."
+        ];
+        
+        let introRunning = false;
+
+        async function startApp() {
+            if(introRunning) return;
+            introRunning = true;
+            
+            initAudio();
+            playSound('click');
+
+            document.getElementById('init-overlay').style.opacity = '0';
+            setTimeout(() => {
+                document.getElementById('init-overlay').style.display = 'none';
+                document.getElementById('intro-overlay').style.display = 'flex';
+                runIntroTyping();
+            }, 600);
+        }
+
+        async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+        async function runIntroTyping() {
+            const textEl = document.getElementById('intro-text');
+            
+            for (let i = 0; i < languages.length; i++) {
+                const lang = languages[i];
+                textEl.innerText = '';
+                textEl.style.opacity = '1';
+                
+                for (let c = 0; c < lang.length; c++) {
+                    textEl.innerText += lang[c];
+                    playSound('type');
+                    await sleep(45 + Math.random() * 35); // Slow, deliberate typing speed
+                }
+                
+                await sleep(900);
+                textEl.style.opacity = '0'; // Sleek fade out
+                await sleep(500);
+            }
+
+            document.getElementById('intro-cursor').style.display = 'none';
+            document.getElementById('intro-overlay').style.opacity = '0';
+            playSound('startup');
+            
+            document.getElementById('app-container').classList.add('visible');
+            setTimeout(() => {
+                document.getElementById('intro-overlay').style.display = 'none';
+                checkUrlHash();
+            }, 1000);
+        }
+
+        // --- UI & FEATURES ---
+        function toast(msg) {
+            const el = document.getElementById('toast');
+            el.innerText = msg; el.classList.add('show');
+            setTimeout(() => el.classList.remove('show'), 3000);
+        }
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.view').forEach(v => {
+                v.style.opacity = '0'; v.style.transform = 'translateY(8px)';
+                setTimeout(() => v.classList.remove('active'), 180);
+            });
+            
+            document.getElementById(`tab-${tabId}`).classList.add('active');
+            setTimeout(() => {
+                const nv = document.getElementById(`view-${tabId}`);
+                nv.classList.add('active');
+                setTimeout(() => { nv.style.opacity = '1'; nv.style.transform = 'translateY(0)'; }, 10);
+            }, 180);
+        }
+
+        function updatePayloadSize() {
+            const txt = document.getElementById('enc-text').value;
+            const bytes = new Blob([txt]).size;
+            document.getElementById('payload-bytes').innerText = `${bytes} B`;
+        }
+
+        function genPass() {
+            const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
+            let pass = "";
+            const array = new Uint32Array(20);
+            window.crypto.getRandomValues(array);
+            for(let i=0; i<20; i++) pass += chars[array[i] % chars.length];
+            
+            const input = document.getElementById('enc-pass');
+            input.type = "text"; input.value = pass;
+            checkStrength(); playSound('success');
+        }
+
+        function checkStrength() {
+            const val = document.getElementById('enc-pass').value;
+            const meter = document.getElementById('strength-meter');
+            if(!val) { meter.innerText = ""; return; }
+            let score = 0;
+            if(val.length > 8) score++;
+            if(val.length > 15) score++;
+            if(/[A-Z]/.test(val)) score++;
+            if(/[0-9]/.test(val)) score++;
+            if(/[^A-Za-z0-9]/.test(val)) score++;
+
+            if(score <= 2) { meter.innerText = "[ WEAK ]"; meter.style.color = "#ef4444"; }
+            else if(score <= 4) { meter.innerText = "[ GOOD ]"; meter.style.color = "#eab308"; }
+            else { meter.innerText = "[ SECURE ]"; meter.style.color = "#10b981"; }
+        }
+
+        // --- FILE HANDLING (Up to 3MB) ---
+        let pendingFile = null;
+        let importedFilePayload = null;
+        let decryptedFile = null;
+
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if(!file) return;
+            if(file.size > 3 * 1024 * 1024) { playSound('error'); toast('file limit is 3MB'); return; }
+            
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                pendingFile = { name: file.name, data: ev.target.result };
+                document.getElementById('file-label').innerText = file.name;
+                playSound('blip');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function handleImportFile(e) {
+            const file = e.target.files[0];
+            if(!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                importedFilePayload = ev.target.result.trim();
+                document.getElementById('import-file-label').innerText = file.name;
+                playSound('blip');
+            };
+            reader.readAsText(file);
+        }
+
+        // --- STEGANOGRAPHY (Zero-Width Space Encoding) ---
+        function encodeStego(ciphertext) {
+            const zwsp = ['\u200B', '\u200C']; // 0 and 1
+            let binary = '';
+            for (let i = 0; i < ciphertext.length; i++) {
+                binary += ciphertext.charCodeAt(i).toString(2).padStart(8, '0');
+            }
+            let hidden = '';
+            for (let i = 0; i < binary.length; i++) {
+                hidden += zwsp[parseInt(binary[i])];
+            }
+            return "CONFIDENTIAL DOSSIER [ " + hidden + " ] READ ATTACHMENT";
+        }
+
+        function decodeStego(stegoText) {
+            let binary = '';
+            for (let i = 0; i < stegoText.length; i++) {
+                if (stegoText[i] === '\u200B') binary += '0';
+                else if (stegoText[i] === '\u200C') binary += '1';
+            }
+            if (!binary || binary.length % 8 !== 0) return null;
+            let ciphertext = '';
+            for (let i = 0; i < binary.length; i += 8) {
+                ciphertext += String.fromCharCode(parseInt(binary.substr(i, 8), 2));
+            }
+            return ciphertext;
+        }
+
+        // --- CORE CRYPTO ---
+        function processEncrypt(mode) {
+            const text = document.getElementById('enc-text').value;
+            const pass = document.getElementById('enc-pass').value;
+            if(!text && !pendingFile) { playSound('error'); toast('payload or file required'); return; }
+            if(!pass) { playSound('error'); toast('passkey required'); return; }
+
+            const burn = document.getElementById('enc-burn').checked;
+            const useStego = document.getElementById('enc-stego').checked;
+            
+            const payload = { t: text, b: burn };
+            if (pendingFile) payload.f = pendingFile;
+
+            let encrypted = CryptoJS.AES.encrypt(JSON.stringify(payload), pass).toString();
+            
+            if (useStego) {
+                encrypted = encodeStego(encrypted);
+            }
+
+            let output = "";
+
+            if (mode === 'url') {
+                const baseUrl = window.location.href.split('#')[0];
+                output = baseUrl + '#' + encodeURIComponent(encrypted);
+                document.getElementById('share-label').innerText = "Stateless URL Vector";
+            } else if (mode === 'code') {
+                const code = Math.random().toString(36).substring(2, 8).toLowerCase();
+                localStorage.setItem(`dsr_v3_${code}`, encrypted);
+                output = code;
+                document.getElementById('share-label').innerText = "Local Shortcode";
+            } else if (mode === 'file') {
+                // Export .dsr file
+                const blob = new Blob([encrypted], { type: 'application/octet-stream' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `payload_${Date.now()}.dsr`;
+                a.click();
+                URL.revokeObjectURL(url);
+                toast(".dsr file exported");
+                playSound('success');
+                return;
+            }
+
+            document.getElementById('share-output').innerText = output;
+            
+            document.getElementById('qr-code').innerHTML = "";
+            new QRCode(document.getElementById('qr-code'), {
+                text: output, width: 130, height: 130, colorDark : "#000000", colorLight : "#ffffff", correctLevel : QRCode.CorrectLevel.L
+            });
+
+            // Cleanup
+            pendingFile = null;
+            document.getElementById('enc-text').value = '';
+            document.getElementById('file-label').innerText = 'none selected';
+            document.getElementById('file-input').value = '';
+            updatePayloadSize();
+
+            playSound('success');
+            switchTab('share');
+            document.getElementById('view-encrypt').classList.remove('active');
+            document.getElementById('view-share').classList.add('active');
+            document.getElementById('view-share').style.opacity = '1';
+            document.getElementById('view-share').style.transform = 'translateY(0)';
+        }
+
+        function copyShare() {
+            navigator.clipboard.writeText(document.getElementById('share-output').innerText).then(() => {
+                toast("vector copied to clipboard"); playSound('blip');
+            });
+        }
+
+        function nativeShare() {
+            const val = document.getElementById('share-output').innerText;
+            if(navigator.share) {
+                navigator.share({ title: 'dossier payload', text: 'Encrypted dossier vector:', url: val.startsWith('http') ? val : undefined }).catch(()=>{});
+            } else {
+                toast("native share unsupported");
+            }
+        }
+
+        let burnInterval = null;
+
+        function processDecrypt() {
+            let codeInput = document.getElementById('dec-code').value.trim();
+            const pass = document.getElementById('dec-pass').value;
+            
+            if (importedFilePayload) {
+                codeInput = importedFilePayload;
+            }
+
+            if(!codeInput || !pass) { playSound('error'); toast('vector and passkey required'); return; }
+
+            let encrypted = null;
+            let isCode = false;
+
+            // Check if Steganography
+            if (codeInput.includes('\u200B') || codeInput.includes('\u200C')) {
+                encrypted = decodeStego(codeInput);
+            } else if (codeInput.includes('#')) {
+                codeInput = codeInput.split('#')[1];
+                try { encrypted = decodeURIComponent(codeInput); } catch(e) {}
+            } else if (codeInput.length === 6 && localStorage.getItem(`dsr_v3_${codeInput.toLowerCase()}`)) {
+                encrypted = localStorage.getItem(`dsr_v3_${codeInput.toLowerCase()}`);
+                isCode = true;
+            } else {
+                encrypted = codeInput;
+            }
+
+            if(!encrypted) { playSound('error'); toast("vector corrupted or invalid"); return; }
+
+            try {
+                const bytes = CryptoJS.AES.decrypt(encrypted, pass);
+                const dec = bytes.toString(CryptoJS.enc.Utf8);
+                if(!dec) throw new Error("bad pass");
+
+                const data = JSON.parse(dec);
+                document.getElementById('result-text').value = data.t;
+
+                if(data.f && data.f.data) {
+                    decryptedFile = data.f;
+                    document.getElementById('download-wrapper').style.display = 'block';
+                    document.getElementById('btn-download').innerText = `[ Download: ${data.f.name} ]`;
+                } else {
+                    decryptedFile = null;
+                    document.getElementById('download-wrapper').style.display = 'none';
+                }
+
+                const statusEl = document.getElementById('burn-status');
+                const timerBar = document.getElementById('burn-timer-bar');
+
+                if(isCode && data.b) {
+                    localStorage.removeItem(`dsr_v3_${codeInput.toLowerCase()}`);
+                    statusEl.innerText = "[ burned from storage | 30s auto-wipe ]";
+                    playSound('delete');
+
+                    // 30 second visual burn countdown
+                    timerBar.style.display = 'block';
+                    timerBar.style.transform = 'scaleX(1)';
+                    let left = 30;
+                    if(burnInterval) clearInterval(burnInterval);
+                    burnInterval = setInterval(() => {
+                        left--;
+                        timerBar.style.transform = `scaleX(${left / 30})`;
+                        if(left <= 0) {
+                            clearInterval(burnInterval);
+                            clearResult();
+                        }
+                    }, 1000);
+
+                } else {
+                    statusEl.innerText = "";
+                    timerBar.style.display = 'none';
+                    playSound('success');
+                }
+
+                document.getElementById('dec-pass').value = '';
+                importedFilePayload = null;
+                document.getElementById('import-file-label').innerText = 'none selected';
+
+                document.getElementById('view-decrypt').classList.remove('active');
+                document.getElementById('view-result').classList.add('active');
+                document.getElementById('view-result').style.opacity = '1';
+                document.getElementById('view-result').style.transform = 'translateY(0)';
+                toast("payload decrypted");
+
+            } catch(e) {
+                playSound('error');
+                toast("decryption failed. incorrect passkey.");
+            }
+        }
+
+        function downloadAttachment() {
+            if(!decryptedFile) return;
+            const a = document.createElement('a');
+            a.href = decryptedFile.data;
+            a.download = decryptedFile.name;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            playSound('blip');
+        }
+
+        function copyResult() {
+            navigator.clipboard.writeText(document.getElementById('result-text').value).then(() => {
+                toast("text copied"); playSound('blip');
+            });
+        }
+
+        function clearResult() {
+            if(burnInterval) clearInterval(burnInterval);
+            document.getElementById('result-text').value = '';
+            document.getElementById('dec-code').value = '';
+            decryptedFile = null;
+            document.getElementById('download-wrapper').style.display = 'none';
+            document.getElementById('burn-timer-bar').style.display = 'none';
+            playSound('delete');
+            switchTab('decrypt');
+        }
+
+        function checkUrlHash() {
+            if(window.location.hash && window.location.hash.length > 5) {
+                document.getElementById('dec-code').value = window.location.hash.substring(1);
+                switchTab('decrypt');
+                toast("encrypted link detected"); playSound('blip');
+                history.replaceState(null, null, window.location.href.split('#')[0]);
+            }
+        }
+    </script>
+</body>
+</html>
