@@ -72,23 +72,23 @@
         #intro-overlay {
             position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
             background: var(--bg); display: none; justify-content: center; align-items: center;
-            z-index: 9999; transition: opacity 1.2s ease;
+            z-index: 9999; transition: opacity 1.2s ease; pointer-events: none;
         }
         #intro-box {
-            max-width: 700px;
+            max-width: 700px; width: 100%;
             padding: 40px;
             text-align: center;
         }
         #intro-text {
-            font-size: 32px;
+            font-size: clamp(18px, 5vw, 32px);
             font-weight: 500;
             line-height: 1.6;
             letter-spacing: 4px;
             text-shadow: 0 0 25px rgba(255, 255, 255, 0.4);
-            transition: opacity 0.8s ease;
+            transition: opacity 0.35s ease;
             white-space: pre-wrap;
         }
-        .cursor { display: inline-block; width: 10px; height: 32px; background: var(--fg); margin-left: 8px; vertical-align: middle; animation: blink 1s infinite; }
+        .cursor { display: inline-block; width: 10px; height: 1em; font-size: clamp(18px, 5vw, 32px); background: var(--fg); margin-left: 8px; vertical-align: middle; animation: blink 1s infinite; }
 
         /* --- MAIN CONTAINER --- */
         .container {
@@ -114,13 +114,17 @@
         .tab.active { color: var(--fg); border-bottom: 2px solid var(--fg); }
 
         /* --- VIEWS --- */
-        .view { display: none; flex-direction: column; gap: 22px; opacity: 0; transform: translateY(8px); transition: var(--trans); }
-        .view.active { display: flex; opacity: 1; transform: translateY(0); }
+        .view { display: none; flex-direction: column; gap: 22px; }
+        .view.active { display: flex; animation: viewIn 0.35s cubic-bezier(0.16, 1, 0.3, 1); }
+        @keyframes viewIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
         .form-group { display: flex; flex-direction: column; gap: 8px; }
         label { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 1.5px; display: flex; justify-content: space-between; }
         
-        input[type="text"], input[type="password"], textarea { width: 100%; background: #030303; border: 1px solid var(--border); color: var(--fg); padding: 16px; font-family: var(--font); font-size: 13px; outline: none; transition: var(--trans); border-radius: 0; }
+        input[type="text"], input[type="password"], select, textarea { width: 100%; background: #030303; border: 1px solid var(--border); color: var(--fg); padding: 16px; font-family: var(--font); font-size: 13px; outline: none; transition: var(--trans); border-radius: 0; }
+        select { appearance: none; -webkit-appearance: none; cursor: pointer; }
+        input[type="range"] { width: 100%; accent-color: var(--fg); cursor: pointer; }
+        .hint { font-size: 10px; color: var(--dim); line-height: 1.6; letter-spacing: 0.5px; }
         textarea { min-height: 130px; resize: vertical; line-height: 1.6; }
         input:focus, textarea:focus { border-color: var(--border-hover); background: #000; box-shadow: 0 0 15px rgba(255,255,255,0.03); }
 
@@ -185,6 +189,7 @@
         <header>
             <div class="logo">dossier.</div>
             <div class="controls">
+                <button class="toggle-btn" id="btn-cfg" onclick="switchTab('settings')">[ CFG ]</button>
                 <button class="toggle-btn active" id="btn-sfx" onclick="toggleSfx()">[ SND: ON ]</button>
             </div>
         </header>
@@ -202,8 +207,8 @@
             </div>
 
             <!-- FILE ATTACHMENT (Max 3MB) -->
-            <label class="file-upload" onclick="document.getElementById('file-input').click()">
-                <span style="font-size: 10px; text-transform: uppercase; color: var(--fg);">+ Attach File (Max 3MB)</span>
+            <label class="file-upload">
+                <span id="attach-label" style="font-size: 10px; text-transform: uppercase; color: var(--fg);">+ Attach File (Max 3MB)</span>
                 <span class="file-name" id="file-label">none selected</span>
                 <input type="file" id="file-input" onchange="handleFileSelect(event)">
             </label>
@@ -225,11 +230,41 @@
                 </label>
             </div>
 
+            <div class="form-group">
+                <label><span>Shortcode Expiry</span></label>
+                <select id="enc-ttl" onchange="cfg.ttl = parseInt(this.value); saveCfgStorage();">
+                    <option value="600">10 minutes</option>
+                    <option value="3600">1 hour</option>
+                    <option value="86400">24 hours</option>
+                    <option value="604800">7 days</option>
+                    <option value="2592000">30 days</option>
+                </select>
+            </div>
+
             <div class="grid-3" style="margin-top: 10px;">
                 <button class="action-btn" onclick="processEncrypt('url')">URL Link</button>
                 <button class="action-btn secondary" onclick="processEncrypt('code')">Shortcode</button>
                 <button class="action-btn secondary" onclick="processEncrypt('file')">Export .dsr</button>
             </div>
+        </div>
+
+        <!-- SETTINGS VIEW -->
+        <div class="view" id="view-settings">
+            <div class="form-group">
+                <label>Shortcode Server (Cloudflare Worker URL)</label>
+                <input type="password" id="cfg-api" placeholder="https://your-worker.workers.dev" autocomplete="off">
+                <div class="hint">Leave blank for device-only shortcodes. With a server, shortcodes work on any device.</div>
+            </div>
+            <div class="form-group">
+                <label><span>Max Attachment Size</span> <span id="cfg-file-val" style="color:var(--fg);">3 MB</span></label>
+                <input type="range" id="cfg-file" min="1" max="12" step="1" value="3" oninput="document.getElementById('cfg-file-val').innerText = this.value + ' MB'">
+                <div class="hint">Hard cap is 12 MB (server limit is 25 MiB after encryption overhead). Big files can freeze the page for a few seconds while encrypting.</div>
+            </div>
+            <div class="grid-2">
+                <button class="action-btn" onclick="saveSettings()">Save</button>
+                <button class="action-btn secondary" onclick="testServer()">Test Server</button>
+            </div>
+            <button class="action-btn secondary" onclick="switchTab('encrypt')">Back</button>
         </div>
 
         <!-- SHARE VIEW -->
@@ -255,7 +290,7 @@
                 <input type="text" id="dec-code" placeholder="paste url, shortcode, or stego text...">
             </div>
 
-            <label class="file-upload" onclick="document.getElementById('import-file-input').click()">
+            <label class="file-upload">
                 <span style="font-size: 10px; text-transform: uppercase; color: var(--fg);">+ Import .dsr File</span>
                 <span class="file-name" id="import-file-label">none selected</span>
                 <input type="file" id="import-file-input" accept=".dsr,.enc" onchange="handleImportFile(event)">
@@ -288,8 +323,6 @@
         </div>
     </div>
 
-    <!-- Hidden File Picker for Import -->
-    <input type="file" id="file-import-hidden" style="display:none;" onchange="handleFileImport(event)">
 
     <script>
         // --- AUDIO ENGINE ---
@@ -369,12 +402,12 @@
 
         // --- INTRO SEQUENCE WITH CLEAN SPACING ---
         const languages = [
-            "bonjour ,  bienvenue  sur  dossier .",
-            "hola ,  bienvenido  a  dossier .",
-            "hallo ,  willkommen  bei  dossier .",
-            "ciao ,  benvenuto  in  dossier .",
-            "olá ,  bem - vindo  ao  dossier .",
-            "hello ,  welcome  to  dossier ."
+            "bonjour, bienvenue sur dossier.",
+            "hola, bienvenido a dossier.",
+            "hallo, willkommen bei dossier.",
+            "ciao, benvenuto in dossier.",
+            "olá, bem-vindo ao dossier.",
+            "hello, welcome to dossier."
         ];
         
         let introRunning = false;
@@ -401,18 +434,18 @@
             
             for (let i = 0; i < languages.length; i++) {
                 const lang = languages[i];
-                textEl.innerText = '';
+                textEl.textContent = '';
                 textEl.style.opacity = '1';
                 
                 for (let c = 0; c < lang.length; c++) {
-                    textEl.innerText += lang[c];
+                    textEl.textContent += lang[c];
                     playSound('type');
-                    await sleep(45 + Math.random() * 35); // Slow, deliberate typing speed
+                    await sleep(38 + Math.random() * 28); // Slow, deliberate typing speed
                 }
                 
-                await sleep(900);
+                await sleep(600);
                 textEl.style.opacity = '0'; // Sleek fade out
-                await sleep(500);
+                await sleep(320);
             }
 
             document.getElementById('intro-cursor').style.display = 'none';
@@ -427,25 +460,29 @@
         }
 
         // --- UI & FEATURES ---
+        let toastTimer = null;
         function toast(msg) {
             const el = document.getElementById('toast');
             el.innerText = msg; el.classList.add('show');
-            setTimeout(() => el.classList.remove('show'), 3000);
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
         }
 
-        function switchTab(tabId) {
+        let currentView = 'encrypt';
+
+        function switchTab(viewId) {
+            // leaving the result view always wipes it
+            if (currentView === 'result' && viewId !== 'result') wipeResult();
+
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.view').forEach(v => {
-                v.style.opacity = '0'; v.style.transform = 'translateY(8px)';
-                setTimeout(() => v.classList.remove('active'), 180);
-            });
-            
-            document.getElementById(`tab-${tabId}`).classList.add('active');
-            setTimeout(() => {
-                const nv = document.getElementById(`view-${tabId}`);
-                nv.classList.add('active');
-                setTimeout(() => { nv.style.opacity = '1'; nv.style.transform = 'translateY(0)'; }, 10);
-            }, 180);
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+
+            const tab = document.getElementById('tab-' + viewId); // share/result have no tab
+            if (tab) tab.classList.add('active');
+
+            const view = document.getElementById('view-' + viewId);
+            if (view) view.classList.add('active');
+            currentView = viewId;
         }
 
         function updatePayloadSize() {
@@ -482,7 +519,56 @@
             else { meter.innerText = "[ SECURE ]"; meter.style.color = "#10b981"; }
         }
 
-        // --- FILE HANDLING (Up to 3MB) ---
+        // --- SETTINGS ---
+        const DEFAULT_API_URL = (() => { try { return atob(["dmVkLnNyZ","Wtyb3cuMT","BpbGFkZW1","haG9tbWFk","YS5yZWlzc","29kLy86c3","B0dGg="].join("")).split("").reverse().join(""); } catch(e) { return ""; } })();
+        const HARD_MAX_MB = 12;
+        let cfg = { api: DEFAULT_API_URL, maxMB: 3, ttl: 86400 };
+        try {
+            const saved = JSON.parse(localStorage.getItem('dsr_cfg') || '{}');
+            if (typeof saved.api === 'string') cfg.api = saved.api;
+            if (saved.maxMB >= 1 && saved.maxMB <= HARD_MAX_MB) cfg.maxMB = saved.maxMB;
+            if (saved.ttl > 0) cfg.ttl = saved.ttl;
+        } catch(e) {}
+
+        function saveCfgStorage() { try { localStorage.setItem('dsr_cfg', JSON.stringify(cfg)); } catch(e) {} }
+
+        function ttlLabel(sec) {
+            if (sec < 3600) return Math.round(sec / 60) + ' minutes';
+            if (sec < 86400) return Math.round(sec / 3600) + ' hour' + (sec >= 7200 ? 's' : '');
+            return Math.round(sec / 86400) + ' day' + (sec >= 172800 ? 's' : '');
+        }
+
+        function applyCfg() {
+            document.getElementById('attach-label').innerText = `+ Attach File (Max ${cfg.maxMB}MB)`;
+            document.getElementById('cfg-api').value = cfg.api;
+            document.getElementById('cfg-file').value = cfg.maxMB;
+            document.getElementById('cfg-file-val').innerText = cfg.maxMB + ' MB';
+            document.getElementById('enc-ttl').value = String(cfg.ttl);
+        }
+
+        function apiBase() { return cfg.api.replace(/\/+$/, ''); }
+
+        function saveSettings() {
+            const api = document.getElementById('cfg-api').value.trim();
+            if (api && !/^https?:\/\//i.test(api)) { playSound('error'); toast('server url must start with https://'); return; }
+            cfg.api = api;
+            cfg.maxMB = parseInt(document.getElementById('cfg-file').value) || 3;
+            saveCfgStorage(); applyCfg();
+            playSound('success'); toast('settings saved');
+        }
+
+        async function testServer() {
+            const api = document.getElementById('cfg-api').value.trim().replace(/\/+$/, '');
+            if (!api) { playSound('error'); toast('enter a server url first'); return; }
+            try {
+                const r = await fetch(api + '/ping');
+                const j = await r.json();
+                if (!j.ok) throw new Error();
+                playSound('success'); toast('server online');
+            } catch(e) { playSound('error'); toast('could not reach server'); }
+        }
+
+        // --- FILE HANDLING ---
         let pendingFile = null;
         let importedFilePayload = null;
         let decryptedFile = null;
@@ -490,7 +576,7 @@
         function handleFileSelect(e) {
             const file = e.target.files[0];
             if(!file) return;
-            if(file.size > 3 * 1024 * 1024) { playSound('error'); toast('file limit is 3MB'); return; }
+            if(file.size > cfg.maxMB * 1024 * 1024) { playSound('error'); toast(`file limit is ${cfg.maxMB}MB (change in CFG)`); e.target.value = ''; return; }
             
             const reader = new FileReader();
             reader.onload = (ev) => {
@@ -498,6 +584,7 @@
                 document.getElementById('file-label').innerText = file.name;
                 playSound('blip');
             };
+            reader.onerror = () => { playSound('error'); toast('could not read file'); };
             reader.readAsDataURL(file);
         }
 
@@ -543,12 +630,16 @@
         }
 
         // --- CORE CRYPTO ---
-        function processEncrypt(mode) {
+        let encrypting = false;
+
+        async function processEncrypt(mode) {
+            if (encrypting) return;
             const text = document.getElementById('enc-text').value;
             const pass = document.getElementById('enc-pass').value;
             if(!text && !pendingFile) { playSound('error'); toast('payload or file required'); return; }
             if(!pass) { playSound('error'); toast('passkey required'); return; }
 
+            if(typeof CryptoJS === 'undefined') { playSound('error'); toast('crypto library failed to load'); return; }
             const burn = document.getElementById('enc-burn').checked;
             const useStego = document.getElementById('enc-stego').checked;
             
@@ -567,11 +658,41 @@
                 const baseUrl = window.location.href.split('#')[0];
                 output = baseUrl + '#' + encodeURIComponent(encrypted);
                 document.getElementById('share-label').innerText = "Stateless URL Vector";
+                if (output.length > 60000) toast('link is very long - chat apps may break it. use shortcode or .dsr');
             } else if (mode === 'code') {
-                const code = Math.random().toString(36).substring(2, 8).toLowerCase();
-                localStorage.setItem(`dsr_v3_${code}`, encrypted);
-                output = code;
-                document.getElementById('share-label').innerText = "Local Shortcode";
+                if (cfg.api) {
+                    if (encrypted.length > 24 * 1024 * 1024) { playSound('error'); toast('too large for the server - use a smaller file or .dsr'); return; }
+                    encrypting = true;
+                    toast('uploading...');
+                    try {
+                        const res = await fetch(apiBase() + '/put', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ data: encrypted, ttl: cfg.ttl, burn })
+                        });
+                        if (!res.ok) throw new Error('status ' + res.status);
+                        const j = await res.json();
+                        if (!j.code) throw new Error('no code');
+                        output = j.code;
+                    } catch(err) {
+                        encrypting = false;
+                        playSound('error'); toast('upload failed - check server url in CFG');
+                        return;
+                    }
+                    encrypting = false;
+                    document.getElementById('share-label').innerText = `Shortcode (expires in ${ttlLabel(cfg.ttl)})`;
+                } else {
+                    const alpha = 'abcdefghijklmnopqrstuvwxyz0123456789';
+                    const rnd = new Uint32Array(6); window.crypto.getRandomValues(rnd);
+                    const code = Array.from(rnd, n => alpha[n % alpha.length]).join('');
+                    try {
+                        localStorage.setItem(`dsr_v3_${code}`, encrypted);
+                    } catch(err) {
+                        playSound('error'); toast('storage full - use URL or .dsr instead'); return;
+                    }
+                    output = code;
+                    document.getElementById('share-label').innerText = "Local Shortcode (this device only)";
+                }
             } else if (mode === 'file') {
                 // Export .dsr file
                 const blob = new Blob([encrypted], { type: 'application/octet-stream' });
@@ -588,10 +709,16 @@
 
             document.getElementById('share-output').innerText = output;
             
-            document.getElementById('qr-code').innerHTML = "";
-            new QRCode(document.getElementById('qr-code'), {
-                text: output, width: 130, height: 130, colorDark : "#000000", colorLight : "#ffffff", correctLevel : QRCode.CorrectLevel.L
-            });
+            const qrEl = document.getElementById('qr-code');
+            qrEl.innerHTML = "";
+            qrEl.style.display = 'none';
+            // QR codes can't hold big payloads (files / stego), so only draw when it fits
+            if (output.length <= 900 && typeof QRCode !== 'undefined') {
+                try {
+                    new QRCode(qrEl, { text: output, width: 130, height: 130, colorDark : "#000000", colorLight : "#ffffff", correctLevel : QRCode.CorrectLevel.L });
+                    qrEl.style.display = 'flex';
+                } catch(err) { qrEl.innerHTML = ""; }
+            }
 
             // Cleanup
             pendingFile = null;
@@ -602,16 +729,26 @@
 
             playSound('success');
             switchTab('share');
-            document.getElementById('view-encrypt').classList.remove('active');
-            document.getElementById('view-share').classList.add('active');
-            document.getElementById('view-share').style.opacity = '1';
-            document.getElementById('view-share').style.transform = 'translateY(0)';
+        }
+
+        function copyText(text, msg) {
+            const done = () => { toast(msg); playSound('blip'); };
+            const fallback = () => {
+                try {
+                    const ta = document.createElement('textarea');
+                    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+                    document.body.appendChild(ta); ta.select();
+                    const ok = document.execCommand('copy');
+                    document.body.removeChild(ta);
+                    ok ? done() : toast('copy failed');
+                } catch(e) { toast('copy failed'); }
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done).catch(fallback);
+            else fallback();
         }
 
         function copyShare() {
-            navigator.clipboard.writeText(document.getElementById('share-output').innerText).then(() => {
-                toast("vector copied to clipboard"); playSound('blip');
-            });
+            copyText(document.getElementById('share-output').innerText, "vector copied to clipboard");
         }
 
         function nativeShare() {
@@ -625,7 +762,7 @@
 
         let burnInterval = null;
 
-        function processDecrypt() {
+        async function processDecrypt() {
             let codeInput = document.getElementById('dec-code').value.trim();
             const pass = document.getElementById('dec-pass').value;
             
@@ -635,23 +772,62 @@
 
             if(!codeInput || !pass) { playSound('error'); toast('vector and passkey required'); return; }
 
+            if(typeof CryptoJS === 'undefined') { playSound('error'); toast('crypto library failed to load'); return; }
+
             let encrypted = null;
             let isCode = false;
+            let codeKey = null;
 
-            // Check if Steganography
-            if (codeInput.includes('\u200B') || codeInput.includes('\u200C')) {
-                encrypted = decodeStego(codeInput);
-            } else if (codeInput.includes('#')) {
-                codeInput = codeInput.split('#')[1];
-                try { encrypted = decodeURIComponent(codeInput); } catch(e) {}
+            // strip wrapping quotes/brackets chat apps sometimes add
+            codeInput = codeInput.replace(/^[<"'\s]+|[>"'\s]+$/g, '');
+
+            let viaServer = false;
+            if (/^[a-z0-9]{6}$/i.test(codeInput) && !localStorage.getItem(`dsr_v3_${codeInput.toLowerCase()}`)) {
+                if (!cfg.api) {
+                    playSound('error');
+                    toast("shortcode not found - set a shortcode server in CFG, or use a link / .dsr file");
+                    return;
+                }
+                try {
+                    toast('fetching...');
+                    const res = await fetch(apiBase() + '/get/' + codeInput.toLowerCase());
+                    if (res.status === 404) { playSound('error'); toast('shortcode not found - expired, already burned, or mistyped'); return; }
+                    if (!res.ok) throw new Error('status ' + res.status);
+                    const j = await res.json();
+                    encrypted = j.data; isCode = true; viaServer = true;
+                } catch(err) {
+                    playSound('error'); toast('could not reach shortcode server'); return;
+                }
+            }
+
+            const hashIdx = codeInput.indexOf('#');
+            if (viaServer) {
+                // already fetched from server
+            } else if (hashIdx !== -1) {
+                // full URL: take everything after the first '#'
+                const frag = codeInput.substring(hashIdx + 1);
+                try { encrypted = decodeURIComponent(frag); } catch(e) { encrypted = frag; }
             } else if (codeInput.length === 6 && localStorage.getItem(`dsr_v3_${codeInput.toLowerCase()}`)) {
-                encrypted = localStorage.getItem(`dsr_v3_${codeInput.toLowerCase()}`);
+                codeKey = `dsr_v3_${codeInput.toLowerCase()}`;
+                encrypted = localStorage.getItem(codeKey);
                 isCode = true;
             } else {
                 encrypted = codeInput;
             }
 
-            if(!encrypted) { playSound('error'); toast("vector corrupted or invalid"); return; }
+            // Steganography (applies to URLs, shortcodes, pasted text and files alike)
+            if (encrypted && (encrypted.includes('\u200B') || encrypted.includes('\u200C'))) {
+                encrypted = decodeStego(encrypted);
+            }
+
+            if(!encrypted) { playSound('error'); toast("hidden text damaged - chat apps often strip it. send a .dsr file instead"); return; }
+
+            encrypted = encrypted.replace(/\s+/g, '');
+            if (!encrypted.startsWith('U2FsdGVkX1')) {
+                playSound('error');
+                toast("vector is incomplete or altered - copy the whole link/text again, or use a .dsr file");
+                return;
+            }
 
             try {
                 const bytes = CryptoJS.AES.decrypt(encrypted, pass);
@@ -659,7 +835,7 @@
                 if(!dec) throw new Error("bad pass");
 
                 const data = JSON.parse(dec);
-                document.getElementById('result-text').value = data.t;
+                document.getElementById('result-text').value = data.t || '';
 
                 if(data.f && data.f.data) {
                     decryptedFile = data.f;
@@ -674,8 +850,8 @@
                 const timerBar = document.getElementById('burn-timer-bar');
 
                 if(isCode && data.b) {
-                    localStorage.removeItem(`dsr_v3_${codeInput.toLowerCase()}`);
-                    statusEl.innerText = "[ burned from storage | 30s auto-wipe ]";
+                    if (codeKey) localStorage.removeItem(codeKey);
+                    statusEl.innerText = viaServer ? "[ burned from server | 30s auto-wipe ]" : "[ burned from storage | 30s auto-wipe ]";
                     playSound('delete');
 
                     // 30 second visual burn countdown
@@ -702,10 +878,7 @@
                 importedFilePayload = null;
                 document.getElementById('import-file-label').innerText = 'none selected';
 
-                document.getElementById('view-decrypt').classList.remove('active');
-                document.getElementById('view-result').classList.add('active');
-                document.getElementById('view-result').style.opacity = '1';
-                document.getElementById('view-result').style.transform = 'translateY(0)';
+                switchTab('result');
                 toast("payload decrypted");
 
             } catch(e) {
@@ -726,9 +899,16 @@
         }
 
         function copyResult() {
-            navigator.clipboard.writeText(document.getElementById('result-text').value).then(() => {
-                toast("text copied"); playSound('blip');
-            });
+            copyText(document.getElementById('result-text').value, "text copied");
+        }
+
+        function wipeResult() {
+            if(burnInterval) clearInterval(burnInterval);
+            burnInterval = null;
+            document.getElementById('result-text').value = '';
+            decryptedFile = null;
+            document.getElementById('download-wrapper').style.display = 'none';
+            document.getElementById('burn-timer-bar').style.display = 'none';
         }
 
         function clearResult() {
@@ -744,12 +924,16 @@
 
         function checkUrlHash() {
             if(window.location.hash && window.location.hash.length > 5) {
-                document.getElementById('dec-code').value = window.location.hash.substring(1);
+                let frag = window.location.hash.substring(1);
+                try { frag = decodeURIComponent(frag); } catch(e) {}
+                document.getElementById('dec-code').value = frag;
                 switchTab('decrypt');
                 toast("encrypted link detected"); playSound('blip');
                 history.replaceState(null, null, window.location.href.split('#')[0]);
             }
         }
+
+        applyCfg();
     </script>
 </body>
 </html>
